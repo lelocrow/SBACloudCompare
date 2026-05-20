@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SBA Cloud Compare</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Manrope:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div class="bg-shape bg-shape-a"></div>
+  <div class="bg-shape bg-shape-b"></div>
+
+  <main class="page">
+    <section class="hero">
+      <p class="badge">SBA Cloud Compare</p>
+      <h1>Inventário Multi-Cloud com Equivalência AWS, Azure e GCP</h1>
+      <p>
+        Faça a varredura da sua conta AWS ou assinatura Azure, gere Excel e aplique equivalências com base
+        na tabela do CompareCloud em tempo de execução.
+      </p>
+      <div class="hero-note">
+        <strong>Segurança:</strong> as credenciais são enviadas apenas para executar a coleta atual e não são gravadas no código, `.env` ou arquivo.
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="provider-switch" role="tablist" aria-label="Escolha de provedor">
+        <button id="tab-aws" class="provider-btn active" data-provider="aws" type="button">AWS</button>
+        <button id="tab-azure" class="provider-btn" data-provider="azure" type="button">Azure</button>
+      </div>
+
+      <form id="form-aws" class="scan-form active" autocomplete="off">
+        <div class="grid">
+          <label>
+            <span>Nome do projeto</span>
+            <input name="project_name" placeholder="ex: cliente_finops_aws">
+            <small>Usado no nome do arquivo exportado.</small>
+          </label>
+          <label>
+            <span>AWS Access Key ID</span>
+            <input name="access_key_id" required>
+            <small>Credencial temporária para a execução atual.</small>
+          </label>
+          <label>
+            <span>AWS Secret Access Key</span>
+            <input name="secret_access_key" type="password" required>
+            <small>Não é persistida no servidor.</small>
+          </label>
+          <label>
+            <span>AWS Session Token (opcional)</span>
+            <input name="session_token">
+            <small>Preencha se estiver usando credenciais temporárias STS.</small>
+          </label>
+          <label>
+            <span>Default region</span>
+            <input name="default_region" value="us-east-1">
+            <small>Região base para inicializar a sessão AWS.</small>
+          </label>
+          <label>
+            <span>Home region (Resource Explorer)</span>
+            <input name="home_region" value="us-east-1">
+            <small>Região usada para consulta do Resource Explorer 2.</small>
+          </label>
+          <label>
+            <span>Threads</span>
+            <input name="threads" type="number" min="1" max="32" value="8">
+            <small>Paralelismo da coleta por região.</small>
+          </label>
+        </div>
+        <button class="submit-btn" type="submit">Executar leitura AWS</button>
+      </form>
+
+      <form id="form-azure" class="scan-form" autocomplete="off">
+        <div class="grid">
+          <label>
+            <span>Nome do projeto</span>
+            <input name="project_name" placeholder="ex: cliente_finops_azure">
+            <small>Usado no nome do arquivo exportado.</small>
+          </label>
+          <label>
+            <span>Tenant ID</span>
+            <input name="tenant_id" required>
+            <small>Tenant do Entra ID da service principal.</small>
+          </label>
+          <label>
+            <span>Client ID</span>
+            <input name="client_id" required>
+            <small>Application (client) ID da service principal.</small>
+          </label>
+          <label>
+            <span>Client Secret</span>
+            <input name="client_secret" type="password" required>
+            <small>Segredo da service principal para esta execução.</small>
+          </label>
+          <label>
+            <span>Subscription ID (opcional)</span>
+            <input name="subscription_id">
+            <small>Se vazio, varre todas as subscriptions visíveis.</small>
+          </label>
+          <label>
+            <span>Threads</span>
+            <input name="threads" type="number" min="1" max="16" value="4">
+            <small>Paralelismo entre subscriptions.</small>
+          </label>
+        </div>
+        <button class="submit-btn" type="submit">Executar leitura Azure</button>
+      </form>
+    </section>
+
+    <section class="panel status-panel">
+      <h2>Status da execução</h2>
+      <p id="status-text">Pronto para iniciar a coleta.</p>
+      <div id="result-box" class="result-box hidden">
+        <p><strong>Arquivo:</strong> <span id="result-file"></span></p>
+        <p><strong>Fonte da equivalência:</strong> <a id="mapping-source-link" href="{{ mapping_source }}" target="_blank" rel="noreferrer">{{ mapping_source }}</a></p>
+        <p><strong>Dataset:</strong> <a id="mapping-dataset-link" href="{{ data_source }}" target="_blank" rel="noreferrer">{{ data_source }}</a></p>
+        <button id="download-btn" class="download-btn" type="button">Baixar Excel</button>
+        <h3>Abas geradas</h3>
+        <ul id="sheet-list" class="sheet-list"></ul>
+      </div>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
