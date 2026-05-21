@@ -35,52 +35,6 @@ Se o dataset remoto estiver indisponível, a aplicação usa o snapshot local au
 - Azure `threads` internos: `4` (paralelismo por subscription).
 - A varredura continua abrangendo todas as regiões acessíveis (AWS) e todas as subscriptions visíveis quando o `Subscription ID` é deixado vazio (Azure).
 
-## Requisitos locais
-
-1. Python 3.12 ou superior.
-2. `pip` atualizado.
-3. Opcional: `venv` para ambiente virtual.
-
-## Rodando localmente (passo a passo)
-
-1. Entre na pasta do projeto.
-```bash
-cd SBACloudCompare
-```
-
-2. Crie e ative um ambiente virtual.
-```bash
-python -m venv .venv
-```
-```bash
-# Linux/macOS
-source .venv/bin/activate
-```
-```powershell
-# Windows PowerShell
-.venv\Scripts\Activate.ps1
-```
-
-3. Instale dependências.
-```bash
-pip install -r requirements.txt
-```
-
-4. Rode a aplicação.
-```bash
-uvicorn app.main:app --reload --port 8080
-```
-
-5. Teste endpoints básicos.
-```bash
-curl http://localhost:8080/healthz
-```
-
-6. Abra no navegador.
-```text
-http://localhost:8080
-```
-
 ## Deploy no Cloud Run (guia completo)
 
 > Execute os comandos desta seção a partir da raiz do projeto, onde estão os arquivos `Dockerfile`, `requirements.txt` e a pasta `app/`.
@@ -102,23 +56,23 @@ http://localhost:8080
 gcloud auth login
 ```
 
-2. Defina variáveis de ambiente (Linux/macOS).
+2. Defina variáveis de ambiente.
 ```bash
+# Linux/macOS
 export PROJECT_ID="seu-projeto-gcp"
 export REGION="us-central1"
 export SERVICE_NAME="sba-cloud-compare"
 export REPO_NAME="cloud-run-images"
 ```
-
-3. Defina variáveis de ambiente (Windows PowerShell).
 ```powershell
+# Windows PowerShell
 $env:PROJECT_ID="seu-projeto-gcp"
 $env:REGION="us-central1"
 $env:SERVICE_NAME="sba-cloud-compare"
 $env:REPO_NAME="cloud-run-images"
 ```
 
-4. Selecione o projeto no `gcloud`.
+3. Selecione o projeto no `gcloud`.
 ```bash
 # Linux/macOS
 gcloud config set project $PROJECT_ID
@@ -155,7 +109,7 @@ gcloud artifacts repositories create $env:REPO_NAME `
 
 ### 5) Build da imagem
 
-Execute o comando na raiz do projeto (mesma pasta do `Dockerfile`) e não remova o `.` final, que indica o diretório de origem do build.
+Execute o comando na raiz do projeto (mesma pasta do Dockerfile).
 
 ```bash
 # Linux/macOS
@@ -168,21 +122,6 @@ gcloud builds submit \
 gcloud builds submit `
   --tag "$env:REGION-docker.pkg.dev/$env:PROJECT_ID/$env:REPO_NAME/$env:SERVICE_NAME`:latest" `
   .
-```
-
-### 5.1) Teste local do container (opcional, recomendado)
-
-```bash
-# Linux/macOS
-docker run --rm -p 8080:8080 \
-  -e PORT=8080 \
-  "$REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/$SERVICE_NAME:latest"
-```
-```powershell
-# Windows PowerShell
-docker run --rm -p 8080:8080 `
-  -e PORT=8080 `
-  "$env:REGION-docker.pkg.dev/$env:PROJECT_ID/$env:REPO_NAME/$env:SERVICE_NAME`:latest"
 ```
 
 ### 6) Deploy no Cloud Run
@@ -220,25 +159,6 @@ gcloud run deploy $env:SERVICE_NAME `
   --min-instances 0
 ```
 
-### 7) Validar deploy
-
-1. Obtenha URL do serviço.
-```bash
-# Linux/macOS
-gcloud run services describe $SERVICE_NAME --region $REGION --format='value(status.url)'
-```
-```powershell
-# Windows PowerShell
-gcloud run services describe $env:SERVICE_NAME --region $env:REGION --format='value(status.url)'
-```
-
-2. Teste o healthcheck.
-```bash
-curl https://SUA_URL/healthz
-```
-
-3. Abra a URL no navegador e execute uma leitura AWS ou Azure.
-
 ## Sobre `max-instances=1` e `concurrency=1` neste momento
 
 - A recomendação acima é conservadora para controlar custo e consumo de API em scans longos.
@@ -254,36 +174,6 @@ A aplicação precisa sair para internet para:
 - Dataset remoto do CompareCloud (quando disponível)
 
 Se sua organização usa regras restritivas de egress, valide firewall/NAT/VPC connector antes de colocar em produção.
-
-## Atualizando o serviço (novas versões)
-
-1. Gere uma nova imagem.
-```bash
-# Linux/macOS
-gcloud builds submit \
-  --tag $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/$SERVICE_NAME:v2 \
-  .
-```
-```powershell
-# Windows PowerShell
-gcloud builds submit `
-  --tag "$env:REGION-docker.pkg.dev/$env:PROJECT_ID/$env:REPO_NAME/$env:SERVICE_NAME`:v2" `
-  .
-```
-
-2. Publique a nova imagem.
-```bash
-# Linux/macOS
-gcloud run deploy $SERVICE_NAME \
-  --image $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/$SERVICE_NAME:v2 \
-  --region $REGION
-```
-```powershell
-# Windows PowerShell
-gcloud run deploy $env:SERVICE_NAME `
-  --image "$env:REGION-docker.pkg.dev/$env:PROJECT_ID/$env:REPO_NAME/$env:SERVICE_NAME`:v2" `
-  --region $env:REGION
-```
 
 ## Troubleshooting rápido
 
