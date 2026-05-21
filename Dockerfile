@@ -14,4 +14,4 @@ COPY --chown=appuser:appgroup app /app/app
 
 ENV PORT=8080
 USER appuser
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT}"]
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080}"]

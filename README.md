@@ -74,6 +74,8 @@ http://localhost:8080
 
 ## Deploy no Cloud Run (guia completo)
 
+> Execute os comandos desta seção a partir da raiz do projeto, onde estão os arquivos `Dockerfile`, `requirements.txt` e a pasta `app/`.
+
 ### 1) Pré-requisitos GCP
 
 1. Projeto GCP criado e com billing ativo.
@@ -147,15 +149,34 @@ gcloud artifacts repositories create $env:REPO_NAME `
 ```bash
 # Linux/macOS
 gcloud builds submit \
-  --tag $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/$SERVICE_NAME:latest
+  --tag $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/$SERVICE_NAME:latest \
+  .
 ```
 ```powershell
 # Windows PowerShell
 gcloud builds submit `
-  --tag "$env:REGION-docker.pkg.dev/$env:PROJECT_ID/$env:REPO_NAME/$env:SERVICE_NAME`:latest"
+  --tag "$env:REGION-docker.pkg.dev/$env:PROJECT_ID/$env:REPO_NAME/$env:SERVICE_NAME`:latest" `
+  .
+```
+
+### 5.1) Teste local do container (opcional, recomendado)
+
+```bash
+# Linux/macOS
+docker run --rm -p 8080:8080 \
+  -e PORT=8080 \
+  "$REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/$SERVICE_NAME:latest"
+```
+```powershell
+# Windows PowerShell
+docker run --rm -p 8080:8080 `
+  -e PORT=8080 `
+  "$env:REGION-docker.pkg.dev/$env:PROJECT_ID/$env:REPO_NAME/$env:SERVICE_NAME`:latest"
 ```
 
 ### 6) Deploy no Cloud Run
+
+A aplicação deve escutar em `0.0.0.0` e na porta definida por `PORT` (normalmente `8080`). No projeto atual, isso é feito no `Dockerfile` com `uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080}`.
 
 ```bash
 # Linux/macOS
@@ -229,12 +250,14 @@ Se sua organização usa regras restritivas de egress, valide firewall/NAT/VPC c
 ```bash
 # Linux/macOS
 gcloud builds submit \
-  --tag $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/$SERVICE_NAME:v2
+  --tag $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/$SERVICE_NAME:v2 \
+  .
 ```
 ```powershell
 # Windows PowerShell
 gcloud builds submit `
-  --tag "$env:REGION-docker.pkg.dev/$env:PROJECT_ID/$env:REPO_NAME/$env:SERVICE_NAME`:v2"
+  --tag "$env:REGION-docker.pkg.dev/$env:PROJECT_ID/$env:REPO_NAME/$env:SERVICE_NAME`:v2" `
+  .
 ```
 
 2. Publique a nova imagem.
@@ -265,6 +288,20 @@ gcloud run deploy $env:SERVICE_NAME `
 
 4. Equivalência vazia em alguns itens
 - Nem todo serviço possui mapeamento direto no dataset atual do CompareCloud.
+
+5. Ler logs do Cloud Run (opcional)
+```bash
+# Linux/macOS
+gcloud run services logs read $SERVICE_NAME \
+  --region $REGION \
+  --limit 100
+```
+```powershell
+# Windows PowerShell
+gcloud run services logs read $env:SERVICE_NAME `
+  --region $env:REGION `
+  --limit 100
+```
 
 ## Próximos passos recomendados para produção
 
