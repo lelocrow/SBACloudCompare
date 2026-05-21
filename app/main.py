@@ -19,6 +19,12 @@ app = FastAPI(title="SBA Cloud Compare", version="0.2.0")
 templates = Jinja2Templates(directory="app/templates")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
+# Execution settings intentionally kept server-side to simplify the UI.
+AWS_DEFAULT_REGION = "us-east-1"
+AWS_RESOURCE_EXPLORER_HOME_REGION = "us-east-1"
+AWS_SCAN_THREADS = 8
+AZURE_SCAN_THREADS = 4
+
 
 def _sanitize_file_stem(name, fallback):
     stem = (name or "").strip()
@@ -98,9 +104,6 @@ def scan_aws(
     access_key_id: str = Form(...),
     secret_access_key: str = Form(...),
     session_token: str = Form(""),
-    default_region: str = Form("us-east-1"),
-    home_region: str = Form("us-east-1"),
-    threads: int = Form(8),
 ):
     if not access_key_id.strip() or not secret_access_key.strip():
         raise HTTPException(status_code=400, detail="AWS Access Key ID e Secret Access Key são obrigatórios.")
@@ -110,9 +113,9 @@ def scan_aws(
             access_key_id=access_key_id.strip(),
             secret_access_key=secret_access_key.strip(),
             session_token=session_token.strip() or None,
-            default_region=default_region.strip() or "us-east-1",
-            home_region=home_region.strip() or "us-east-1",
-            threads=max(1, int(threads)),
+            default_region=AWS_DEFAULT_REGION,
+            home_region=AWS_RESOURCE_EXPLORER_HOME_REGION,
+            threads=AWS_SCAN_THREADS,
             mapper=mapper,
         )
         workbook_bytes = sheets_to_workbook_bytes(sheets)
@@ -136,7 +139,6 @@ def scan_azure(
     client_id: str = Form(...),
     client_secret: str = Form(...),
     subscription_id: str = Form(""),
-    threads: int = Form(4),
 ):
     if not tenant_id.strip() or not client_id.strip() or not client_secret.strip():
         raise HTTPException(status_code=400, detail="Azure Tenant ID, Client ID e Client Secret são obrigatórios.")
@@ -147,7 +149,7 @@ def scan_azure(
             client_id=client_id.strip(),
             client_secret=client_secret.strip(),
             subscription_id=subscription_id.strip() or None,
-            threads=max(1, int(threads)),
+            threads=AZURE_SCAN_THREADS,
             mapper=mapper,
         )
         workbook_bytes = sheets_to_workbook_bytes(sheets)

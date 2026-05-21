@@ -54,21 +54,10 @@
             <input name="session_token">
             <small>Preencha se estiver usando credenciais temporárias STS.</small>
           </label>
-          <label>
-            <span>Default region</span>
-            <input name="default_region" value="us-east-1">
-            <small>Região base para inicializar a sessão AWS.</small>
-          </label>
-          <label>
-            <span>Home region (Resource Explorer)</span>
-            <input name="home_region" value="us-east-1">
-            <small>Região usada para consulta do Resource Explorer 2.</small>
-          </label>
-          <label>
-            <span>Threads</span>
-            <input name="threads" type="number" min="1" max="32" value="8">
-            <small>Paralelismo da coleta por região.</small>
-          </label>
+          <p class="form-note">
+            A varredura percorre automaticamente todas as regiões AWS acessíveis.
+            O paralelismo da coleta é gerenciado no servidor para manter consistência.
+          </p>
         </div>
         <button class="submit-btn" type="submit">Executar leitura AWS</button>
       </form>
@@ -100,11 +89,9 @@
             <input name="subscription_id">
             <small>Se vazio, varre todas as subscriptions visíveis.</small>
           </label>
-          <label>
-            <span>Threads</span>
-            <input name="threads" type="number" min="1" max="16" value="4">
-            <small>Paralelismo entre subscriptions.</small>
-          </label>
+          <p class="form-note">
+            O paralelismo entre subscriptions é definido internamente para manter execuções estáveis.
+          </p>
         </div>
         <button class="submit-btn" type="submit">Executar leitura Azure</button>
       </form>

@@ -26,6 +26,15 @@ O SBACloudCompare ajuda Arquitetos de Soluções de Negócios a mapear, comparar
 
 Se o dataset remoto estiver indisponível, a aplicação usa o snapshot local automaticamente.
 
+## Configuração de execução (fixa no servidor)
+
+- A UI não expõe mais ajuste de threads nem seleção manual de regiões.
+- AWS `default_region` interno: `us-east-1` (base para sessão e chamadas globais).
+- AWS `home_region` interno: `us-east-1` (consulta do Resource Explorer 2).
+- AWS `threads` internos: `8` (paralelismo por região).
+- Azure `threads` internos: `4` (paralelismo por subscription).
+- A varredura continua abrangendo todas as regiões acessíveis (AWS) e todas as subscriptions visíveis quando o `Subscription ID` é deixado vazio (Azure).
+
 ## Requisitos locais
 
 1. Python 3.12 ou superior.
@@ -146,7 +155,7 @@ gcloud artifacts repositories create $env:REPO_NAME `
 
 ### 5) Build da imagem
 
-Execute o comando na raiz do projeto (mesma pasta do `Dockerfile`) e nÃ£o remova o `.` final, que indica o diretÃ³rio de origem do build.
+Execute o comando na raiz do projeto (mesma pasta do `Dockerfile`) e não remova o `.` final, que indica o diretório de origem do build.
 
 ```bash
 # Linux/macOS
@@ -159,11 +168,6 @@ gcloud builds submit \
 gcloud builds submit `
   --tag "$env:REGION-docker.pkg.dev/$env:PROJECT_ID/$env:REPO_NAME/$env:SERVICE_NAME`:latest" `
   .
-```
-
-```powershell
-# Windows PowerShell (linha Ãºnica equivalente)
-gcloud builds submit --tag "$env:REGION-docker.pkg.dev/$env:PROJECT_ID/$env:REPO_NAME/$env:SERVICE_NAME`:latest" .
 ```
 
 ### 5.1) Teste local do container (opcional, recomendado)
@@ -265,10 +269,6 @@ gcloud builds submit \
 gcloud builds submit `
   --tag "$env:REGION-docker.pkg.dev/$env:PROJECT_ID/$env:REPO_NAME/$env:SERVICE_NAME`:v2" `
   .
-```
-```powershell
-# Windows PowerShell (linha Ãºnica equivalente)
-gcloud builds submit --tag "$env:REGION-docker.pkg.dev/$env:PROJECT_ID/$env:REPO_NAME/$env:SERVICE_NAME`:v2" .
 ```
 
 2. Publique a nova imagem.

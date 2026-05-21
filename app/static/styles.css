@@ -153,6 +153,18 @@ small {
   line-height: 1.35;
 }
 
+.form-note {
+  margin: 0;
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.4;
+  border: 1px dashed #cfdacd;
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #fbfdfb;
+}
+
 .submit-btn {
   margin-top: 16px;
   border: 0;
