@@ -114,12 +114,14 @@
       <h2>Status da execução</h2>
       <p id="status-text">Pronto para iniciar a coleta.</p>
       <div id="result-box" class="result-box hidden">
-        <p><strong>Arquivo:</strong> <span id="result-file"></span></p>
+        <p><strong>Arquivo baixado:</strong> <span id="result-file"></span></p>
+        <p><strong>Provider:</strong> <span id="result-provider"></span></p>
+        <p><strong>Abas:</strong> <span id="result-sheets"></span></p>
+        <p><strong>Registros totais:</strong> <span id="result-rows"></span></p>
+        <p><strong>Warnings:</strong> <span id="result-warnings"></span></p>
         <p><strong>Fonte da equivalência:</strong> <a id="mapping-source-link" href="{{ mapping_source }}" target="_blank" rel="noreferrer">{{ mapping_source }}</a></p>
-        <p><strong>Dataset:</strong> <a id="mapping-dataset-link" href="{{ data_source }}" target="_blank" rel="noreferrer">{{ data_source }}</a></p>
-        <button id="download-btn" class="download-btn" type="button">Baixar Excel</button>
-        <h3>Abas geradas</h3>
-        <ul id="sheet-list" class="sheet-list"></ul>
+        <p><strong>Origem do dataset:</strong> <span id="mapping-dataset-source">remoto</span></p>
+        <p class="result-note">Os arquivos são gerados e baixados na mesma requisição, sem armazenamento para reutilização no servidor.</p>
       </div>
     </section>
   </main>

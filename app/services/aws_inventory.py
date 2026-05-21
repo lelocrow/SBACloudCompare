@@ -2,9 +2,6 @@
 # -*- coding: utf-8 -*-
 import json
 import os
-import sys
-import subprocess
-import importlib
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone, timedelta
 from io import BytesIO
@@ -17,20 +14,34 @@ from botocore.exceptions import ClientError, EndpointConnectionError
 
 def resolve_br_tz():
     try:
-        mod = importlib.import_module("zoneinfo")
-        ZI = getattr(mod, "ZoneInfo")
-        return ZI("America/Sao_Paulo")
+        from zoneinfo import ZoneInfo
+
+        return ZoneInfo("America/Sao_Paulo")
     except Exception:
-        try:
-            subprocess.check_call([sys.executable, "-m", "pip", "install", "tzdata"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            importlib.invalidate_caches()
-            mod = importlib.import_module("zoneinfo")
-            ZI = getattr(mod, "ZoneInfo")
-            return ZI("America/Sao_Paulo")
-        except Exception:
-            return timezone(timedelta(hours=-3))
+        return timezone(timedelta(hours=-3))
 
 BR_TZ = resolve_br_tz()
+
+
+def _trim_error_message(exc, limit=240):
+    msg = str(exc or "").replace("\n", " ").strip()
+    return msg[:limit]
+
+
+def _warn(warnings, service, region, operation, exc):
+    if warnings is None:
+        return
+    warnings.append(
+        {
+            "Provider": "aws",
+            "Service": service,
+            "Region": region or "unknown",
+            "Operation": operation,
+            "ErrorType": type(exc).__name__,
+            "ErrorMessage": _trim_error_message(exc),
+            "CapturedAt": dt_to_br_str(datetime.now(timezone.utc)),
+        }
+    )
 
 def dt_to_br_str(dt):
     if isinstance(dt, datetime):
@@ -183,7 +194,7 @@ def s3_bucket_size_via_listing(session, bucket, bucket_region):
     except Exception:
         return None
 
-def collect_s3(session):
+def collect_s3(session, warnings=None):
     cli = session.client("s3")
     out = []
     try:
@@ -192,8 +203,9 @@ def collect_s3(session):
             name = b.get("Name")
             try:
                 loc = cli.get_bucket_location(Bucket=name).get("LocationConstraint") or "us-east-1"
-            except Exception:
+            except Exception as exc:
                 loc = "unknown"
+                _warn(warnings, "s3", "global", "get_bucket_location", exc)
             size_bytes = s3_bucket_size_via_cw(session, name, loc)
             if size_bytes is None:
                 size_bytes = s3_bucket_size_via_listing(session, name, loc)
@@ -209,11 +221,11 @@ def collect_s3(session):
                 "SizeBytes": size_bytes,
                 "Equivalente_GCP": eq
             })
-    except Exception:
-        pass
+    except Exception as exc:
+        _warn(warnings, "s3", "global", "list_buckets", exc)
     return out
 
-def collect_cloudfront(session):
+def collect_cloudfront(session, warnings=None):
     out = []
     try:
         cli = session.client("cloudfront")
@@ -229,11 +241,11 @@ def collect_cloudfront(session):
                     "Enabled": d.get("Enabled"),
                     "Equivalente_GCP": "Cloud CDN"
                 })
-    except Exception:
-        pass
+    except Exception as exc:
+        _warn(warnings, "cloudfront", "global", "list_distributions", exc)
     return out
 
-def collect_route53(session):
+def collect_route53(session, warnings=None):
     out = []
     try:
         cli = session.client("route53")
@@ -248,11 +260,11 @@ def collect_route53(session):
                     "ResourceRecordSetCount": z.get("ResourceRecordSetCount"),
                     "Equivalente_GCP": "Cloud DNS"
                 })
-    except Exception:
-        pass
+    except Exception as exc:
+        _warn(warnings, "route53", "global", "list_hosted_zones", exc)
     return out
 
-def collect_iam(session):
+def collect_iam(session, warnings=None):
     out_users, out_roles, out_policies = [], [], []
     try:
         cli = session.client("iam")
@@ -291,8 +303,8 @@ def collect_iam(session):
                     "AttachmentCount": p.get("AttachmentCount"),
                     "Equivalente_GCP": "IAM (role/policy binding)"
                 })
-    except Exception:
-        pass
+    except Exception as exc:
+        _warn(warnings, "iam", "global", "list_users_roles_policies", exc)
     return out_users, out_roles, out_policies
 
 def describe_instance_types(session, region, instance_types):
@@ -314,7 +326,7 @@ def describe_instance_types(session, region, instance_types):
             continue
     return out
 
-def collect_ec2(session, region):
+def collect_ec2(session, region, warnings=None):
     cli = session.client("ec2", region_name=region)
     results = {"Instances": [], "Volumes": [], "Snapshots": [], "SecurityGroups": [], "Vpcs": [], "Subnets": [], "RouteTables": [], "Addresses": []}
     instance_types_seen = set()
@@ -338,8 +350,8 @@ def collect_ec2(session, region):
                         "LaunchTime": i.get("LaunchTime"),
                         "Tags": i.get("Tags")
                     })
-    except Exception:
-        pass
+    except Exception as exc:
+        _warn(warnings, "ec2", region, "describe_instances", exc)
     itype_details = describe_instance_types(session, region, instance_types_seen)
     for inst in results["Instances"]:
         it = inst.get("InstanceType")
@@ -373,8 +385,8 @@ def collect_ec2(session, region):
                     "Tags": v.get("Tags"),
                     "Equivalente_GCP": eq
                 })
-    except Exception:
-        pass
+    except Exception as exc:
+        _warn(warnings, "ec2", region, "describe_volumes", exc)
     try:
         paginator = cli.get_paginator("describe_snapshots")
         for page in paginator.paginate(OwnerIds=["self"]):
@@ -389,8 +401,8 @@ def collect_ec2(session, region):
                     "Tags": s.get("Tags"),
                     "Equivalente_GCP": "Disk snapshot"
                 })
-    except Exception:
-        pass
+    except Exception as exc:
+        _warn(warnings, "ec2", region, "describe_snapshots", exc)
     try:
         sgs = cli.describe_security_groups().get("SecurityGroups", [])
         for sg in sgs:
@@ -405,8 +417,8 @@ def collect_ec2(session, region):
                 "Tags": sg.get("Tags"),
                 "Equivalente_GCP": "VPC firewall rule"
             })
-    except Exception:
-        pass
+    except Exception as exc:
+        _warn(warnings, "ec2", region, "describe_security_groups", exc)
     try:
         vpcs = cli.describe_vpcs().get("Vpcs", [])
         for vpc in vpcs:
@@ -418,8 +430,8 @@ def collect_ec2(session, region):
                 "Tags": vpc.get("Tags"),
                 "Equivalente_GCP": "VPC Network"
             })
-    except Exception:
-        pass
+    except Exception as exc:
+        _warn(warnings, "ec2", region, "describe_vpcs", exc)
     try:
         subnets = cli.describe_subnets().get("Subnets", [])
         for sn in subnets:
@@ -432,8 +444,8 @@ def collect_ec2(session, region):
                 "Tags": sn.get("Tags"),
                 "Equivalente_GCP": "VPC Subnet"
             })
-    except Exception:
-        pass
+    except Exception as exc:
+        _warn(warnings, "ec2", region, "describe_subnets", exc)
     try:
         rts = cli.describe_route_tables().get("RouteTables", [])
         for rt in rts:
@@ -446,8 +458,8 @@ def collect_ec2(session, region):
                 "Tags": rt.get("Tags"),
                 "Equivalente_GCP": "VPC Route"
             })
-    except Exception:
-        pass
+    except Exception as exc:
+        _warn(warnings, "ec2", region, "describe_route_tables", exc)
     try:
         addrs = cli.describe_addresses().get("Addresses", [])
         for a in addrs:
@@ -461,11 +473,11 @@ def collect_ec2(session, region):
                 "PrivateIpAddress": a.get("PrivateIpAddress"),
                 "Equivalente_GCP": "Static external IP"
             })
-    except Exception:
-        pass
+    except Exception as exc:
+        _warn(warnings, "ec2", region, "describe_addresses", exc)
     return results
 
-def collect_elb(session, region):
+def collect_elb(session, region, warnings=None):
     out_v2, out_classic = [], []
     try:
         elbv2 = session.client("elbv2", region_name=region)
@@ -482,8 +494,8 @@ def collect_elb(session, region):
                     "VpcId": lb.get("VpcId"),
                     "Equivalente_GCP": "Cloud Load Balancing"
                 })
-    except Exception:
-        pass
+    except Exception as exc:
+        _warn(warnings, "elbv2", region, "describe_load_balancers", exc)
     try:
         elb = session.client("elb", region_name=region)
         paginator = elb.get_paginator("describe_load_balancers")
@@ -498,8 +510,8 @@ def collect_elb(session, region):
                     "VPCId": lb.get("VPCId"),
                     "Equivalente_GCP": "Cloud Load Balancing"
                 })
-    except Exception:
-        pass
+    except Exception as exc:
+        _warn(warnings, "elb", region, "describe_load_balancers", exc)
     return out_v2, out_classic
 
 def docdb_cluster_size_via_cw(session, region, cluster_id):
@@ -524,7 +536,7 @@ def docdb_cluster_size_via_cw(session, region, cluster_id):
     except Exception:
         return None
 
-def collect_rds(session, region):
+def collect_rds(session, region, warnings=None):
     out_instances, out_clusters = [], []
     try:
         cli = session.client("rds", region_name=region)
@@ -559,8 +571,8 @@ def collect_rds(session, region):
                     "VpcSecurityGroups": [v.get("VpcSecurityGroupId") for v in db.get("VpcSecurityGroups", [])],
                     "Equivalente_GCP": eq
                 })
-    except Exception:
-        pass
+    except Exception as exc:
+        _warn(warnings, "rds", region, "describe_db_instances", exc)
     try:
         cli = session.client("rds", region_name=region)
         paginator = cli.get_paginator("describe_db_clusters")
@@ -591,11 +603,11 @@ def collect_rds(session, region):
                     "ClusterStorageGB_Estimated": round(size_bytes / (1024**3), 2) if size_bytes else None,
                     "Equivalente_GCP": eq
                 })
-    except Exception:
-        pass
+    except Exception as exc:
+        _warn(warnings, "rds", region, "describe_db_clusters", exc)
     return out_instances, out_clusters
 
-def collect_lambda(session, region):
+def collect_lambda(session, region, warnings=None):
     out = []
     try:
         cli = session.client("lambda", region_name=region)
@@ -614,11 +626,11 @@ def collect_lambda(session, region):
                     "State": fn.get("State") or "Unknown",
                     "Equivalente_GCP": eq
                 })
-    except Exception:
-        pass
+    except Exception as exc:
+        _warn(warnings, "lambda", region, "list_functions", exc)
     return out
 
-def collect_eks(session, region):
+def collect_eks(session, region, warnings=None):
     out = []
     out_nodegroups = []
     try:
@@ -628,8 +640,9 @@ def collect_eks(session, region):
             for name in page.get("clusters", []):
                 try:
                     desc = cli.describe_cluster(name=name).get("cluster", {})
-                except Exception:
+                except Exception as exc:
                     desc = {}
+                    _warn(warnings, "eks", region, "describe_cluster", exc)
                 min_nodes = 0
                 desired_nodes = 0
                 max_nodes = 0
@@ -638,8 +651,9 @@ def collect_eks(session, region):
                     for ng in ngs:
                         try:
                             ngd = cli.describe_nodegroup(clusterName=name, nodegroupName=ng).get("nodegroup", {})
-                        except Exception:
+                        except Exception as exc:
                             ngd = {}
+                            _warn(warnings, "eks", region, "describe_nodegroup", exc)
                         sc = (ngd.get("scalingConfig") or {})
                         min_nodes += int(sc.get("minSize") or 0)
                         desired_nodes += int(sc.get("desiredSize") or 0)
@@ -652,8 +666,8 @@ def collect_eks(session, region):
                             "DesiredSize": sc.get("desiredSize"),
                             "MaxSize": sc.get("maxSize")
                         })
-                except Exception:
-                    pass
+                except Exception as exc:
+                    _warn(warnings, "eks", region, "list_nodegroups", exc)
                 out.append({
                     "Region": region,
                     "Name": name,
@@ -667,11 +681,11 @@ def collect_eks(session, region):
                     "MaxNodesTotal": max_nodes,
                     "Equivalente_GCP": "GKE (cluster gerenciado)"
                 })
-    except Exception:
-        pass
+    except Exception as exc:
+        _warn(warnings, "eks", region, "list_clusters", exc)
     return out, out_nodegroups
 
-def collect_ecs(session, region):
+def collect_ecs(session, region, warnings=None):
     out_clusters, out_services, out_tasks = [], [], []
     try:
         cli = session.client("ecs", region_name=region)
@@ -746,13 +760,13 @@ def collect_ecs(session, region):
                             "LaunchType": t.get("launchType"),
                             "TaskDefinitionArn": t.get("taskDefinitionArn")
                         })
-            except Exception:
-                pass
-    except Exception:
-        pass
+            except Exception as exc:
+                _warn(warnings, "ecs", region, "list_or_describe_tasks", exc)
+    except Exception as exc:
+        _warn(warnings, "ecs", region, "list_or_describe_clusters_services", exc)
     return out_clusters, out_services, out_tasks
 
-def collect_dynamodb(session, region):
+def collect_dynamodb(session, region, warnings=None):
     out = []
     try:
         cli = session.client("dynamodb", region_name=region)
@@ -761,8 +775,9 @@ def collect_dynamodb(session, region):
             for t in page.get("TableNames", []):
                 try:
                     td = cli.describe_table(TableName=t).get("Table", {})
-                except Exception:
+                except Exception as exc:
                     td = {}
+                    _warn(warnings, "dynamodb", region, "describe_table", exc)
                 size = td.get("TableSizeBytes")
                 if size is not None:
                     eq = f"Firestore/Bigtable (~{size} bytes)"
@@ -777,11 +792,11 @@ def collect_dynamodb(session, region):
                     "SizeBytes": size,
                     "Equivalente_GCP": eq
                 })
-    except Exception:
-        pass
+    except Exception as exc:
+        _warn(warnings, "dynamodb", region, "list_tables", exc)
     return out
 
-def collect_ecr(session, region):
+def collect_ecr(session, region, warnings=None):
     out = []
     try:
         cli = session.client("ecr", region_name=region)
@@ -797,21 +812,21 @@ def collect_ecr(session, region):
                     "ImmutableTags": r.get("imageTagMutability"),
                     "Equivalente_GCP": "Artifact Registry"
                 })
-    except Exception:
-        pass
+    except Exception as exc:
+        _warn(warnings, "ecr", region, "describe_repositories", exc)
     return out
 
-def collect_region(session, region):
+def collect_region(session, region, warnings=None):
     bundle = {"Region": region}
     try:
-        ec2 = collect_ec2(session, region)
-        elb_v2, elb_classic = collect_elb(session, region)
-        rds_instances, rds_clusters = collect_rds(session, region)
-        lambdas = collect_lambda(session, region)
-        eks, eks_nodegroups = collect_eks(session, region)
-        ecs_clusters, ecs_services, ecs_tasks = collect_ecs(session, region)
-        ddb = collect_dynamodb(session, region)
-        ecr = collect_ecr(session, region)
+        ec2 = collect_ec2(session, region, warnings=warnings)
+        elb_v2, elb_classic = collect_elb(session, region, warnings=warnings)
+        rds_instances, rds_clusters = collect_rds(session, region, warnings=warnings)
+        lambdas = collect_lambda(session, region, warnings=warnings)
+        eks, eks_nodegroups = collect_eks(session, region, warnings=warnings)
+        ecs_clusters, ecs_services, ecs_tasks = collect_ecs(session, region, warnings=warnings)
+        ddb = collect_dynamodb(session, region, warnings=warnings)
+        ecr = collect_ecr(session, region, warnings=warnings)
         bundle.update({
             "EC2_Instances": ec2["Instances"],
             "EC2_Volumes": ec2["Volumes"],
@@ -836,6 +851,7 @@ def collect_region(session, region):
         })
     except Exception as e:
         bundle["error"] = f"{type(e).__name__}: {e}"
+        _warn(warnings, "regional_bundle", region, "collect_region", e)
     return bundle
 
 SHEET_TO_COMPARECLOUD_AWS_NAMES = {
@@ -911,19 +927,32 @@ def _merge_region_bundles(region_bundles, key):
 
 
 def build_aws_sheets(session, home_region="us-east-1", threads=8, mapper=None):
+    warnings = []
     sts = session.client("sts")
     account_id = sts.get_caller_identity()["Account"]
 
-    s3 = collect_s3(session)
-    cf = collect_cloudfront(session)
-    r53 = collect_route53(session)
-    iam_users, iam_roles, iam_policies = collect_iam(session)
+    s3 = collect_s3(session, warnings=warnings)
+    cf = collect_cloudfront(session, warnings=warnings)
+    r53 = collect_route53(session, warnings=warnings)
+    iam_users, iam_roles, iam_policies = collect_iam(session, warnings=warnings)
     rex_items, rex_status = collect_resource_explorer(session, home_region)
+    if rex_status != "ok":
+        warnings.append(
+            {
+                "Provider": "aws",
+                "Service": "resource-explorer-2",
+                "Region": home_region,
+                "Operation": "search",
+                "ErrorType": "Unavailable",
+                "ErrorMessage": f"Resource Explorer status: {rex_status}",
+                "CapturedAt": dt_to_br_str(datetime.now(timezone.utc)),
+            }
+        )
 
     regions = [r for r in available_regions(session) if is_region_reachable(session, r)]
     region_bundles = []
     with ThreadPoolExecutor(max_workers=threads) as ex:
-        futures = {ex.submit(collect_region, session, region): region for region in regions}
+        futures = {ex.submit(collect_region, session, region, warnings): region for region in regions}
         for future in as_completed(futures):
             region_bundles.append(future.result())
 
@@ -936,6 +965,7 @@ def build_aws_sheets(session, home_region="us-east-1", threads=8, mapper=None):
         "Regions_Count": len(regions),
         "ResourceExplorer2_Status": rex_status,
         "ResourceExplorer2_Count": len(rex_items),
+        "Warnings_Count": len(warnings),
     }]
     sheets["S3_Buckets"] = s3
     sheets["CloudFront_Distributions"] = cf
@@ -945,6 +975,8 @@ def build_aws_sheets(session, home_region="us-east-1", threads=8, mapper=None):
     sheets["IAM_Policies"] = iam_policies
     if rex_items:
         sheets["ResourceExplorer2"] = rex_items
+    if warnings:
+        sheets["WARNINGS"] = warnings
 
     sheets["EC2_Instances"] = _merge_region_bundles(region_bundles, "EC2_Instances")
     sheets["EC2_Volumes"] = _merge_region_bundles(region_bundles, "EC2_Volumes")

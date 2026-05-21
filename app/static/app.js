@@ -3,13 +3,16 @@ const forms = {
   aws: document.getElementById("form-aws"),
   azure: document.getElementById("form-azure"),
 };
+
 const statusText = document.getElementById("status-text");
 const resultBox = document.getElementById("result-box");
 const resultFile = document.getElementById("result-file");
-const sheetList = document.getElementById("sheet-list");
-const downloadBtn = document.getElementById("download-btn");
+const resultProvider = document.getElementById("result-provider");
+const resultSheets = document.getElementById("result-sheets");
+const resultRows = document.getElementById("result-rows");
+const resultWarnings = document.getElementById("result-warnings");
 const mappingSourceLink = document.getElementById("mapping-source-link");
-const mappingDatasetLink = document.getElementById("mapping-dataset-link");
+const mappingDatasetSource = document.getElementById("mapping-dataset-source");
 
 function setProvider(provider) {
   tabButtons.forEach((button) => {
@@ -22,9 +25,7 @@ function setProvider(provider) {
 }
 
 tabButtons.forEach((button) => {
-  button.addEventListener("click", () => {
-    setProvider(button.dataset.provider);
-  });
+  button.addEventListener("click", () => setProvider(button.dataset.provider));
 });
 
 function setRunning(form, running) {
@@ -33,53 +34,96 @@ function setRunning(form, running) {
   });
 }
 
-function renderSheetCounts(sheetCounts) {
-  sheetList.innerHTML = "";
-  Object.entries(sheetCounts || {})
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .forEach(([name, count]) => {
-      const item = document.createElement("li");
-      item.textContent = `${name}: ${count} registros`;
-      sheetList.appendChild(item);
-    });
+function parseFilenameFromContentDisposition(headerValue) {
+  if (!headerValue) {
+    return "relatorio.xlsx";
+  }
+  const quoted = /filename="([^"]+)"/i.exec(headerValue);
+  if (quoted && quoted[1]) {
+    return quoted[1];
+  }
+  const plain = /filename=([^;]+)/i.exec(headerValue);
+  if (plain && plain[1]) {
+    return plain[1].trim();
+  }
+  return "relatorio.xlsx";
+}
+
+function triggerDownload(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+async function parseErrorResponse(response) {
+  try {
+    const data = await response.json();
+    return data?.detail || "Falha na execução.";
+  } catch {
+    return "Falha na execução.";
+  }
 }
 
 async function runScan(provider, form) {
-  statusText.textContent = `Executando varredura ${provider.toUpperCase()}... isso pode levar alguns minutos.`;
   resultBox.classList.add("hidden");
   setRunning(form, true);
+
+  const startedAt = Date.now();
+  const progressTimer = setInterval(() => {
+    const elapsedSec = Math.floor((Date.now() - startedAt) / 1000);
+    statusText.textContent = `Executando varredura ${provider.toUpperCase()}... ${elapsedSec}s decorridos.`;
+  }, 1000);
 
   try {
     const response = await fetch(`/api/scan/${provider}`, {
       method: "POST",
       body: new FormData(form),
     });
-    const data = await response.json();
+
     if (!response.ok) {
-      throw new Error(data.detail || "Falha na execução.");
+      const detail = await parseErrorResponse(response);
+      throw new Error(detail);
     }
 
-    statusText.textContent = `Leitura ${provider.toUpperCase()} concluída com sucesso.`;
-    if (data.mapping_last_error && data.mapping_data_source && data.mapping_data_source !== data.mapping_data_url) {
-      statusText.textContent += " Fonte remota indisponível; snapshot local aplicado.";
+    const blob = await response.blob();
+    const filename = parseFilenameFromContentDisposition(response.headers.get("content-disposition"));
+    triggerDownload(blob, filename);
+
+    const warningsCount = response.headers.get("x-sba-warnings-count") || "0";
+    const sheetCount = response.headers.get("x-sba-sheet-count") || "-";
+    const totalRows = response.headers.get("x-sba-total-rows") || "-";
+    const mappingSource = response.headers.get("x-sba-mapping-source");
+    const mappingDataSource = response.headers.get("x-sba-mapping-data-source") || "remote";
+    const usedProvider = (response.headers.get("x-sba-provider") || provider).toUpperCase();
+
+    resultFile.textContent = filename;
+    resultProvider.textContent = usedProvider;
+    resultSheets.textContent = sheetCount;
+    resultRows.textContent = totalRows;
+    resultWarnings.textContent = warningsCount;
+    mappingDatasetSource.textContent = mappingDataSource === "snapshot" ? "snapshot local" : "remoto";
+    if (mappingSource) {
+      mappingSourceLink.href = mappingSource;
+      mappingSourceLink.textContent = mappingSource;
     }
-    resultFile.textContent = data.filename;
-    if (data.mapping_source) {
-      mappingSourceLink.href = data.mapping_source;
-      mappingSourceLink.textContent = data.mapping_source;
+
+    statusText.textContent = `Leitura ${usedProvider} concluída e download iniciado.`;
+    if (warningsCount !== "0") {
+      statusText.textContent += ` Foram capturados ${warningsCount} warning(s) no relatório.`;
     }
-    if (data.mapping_data_url) {
-      mappingDatasetLink.href = data.mapping_data_url;
-      mappingDatasetLink.textContent = data.mapping_data_url;
+    if (mappingDataSource === "snapshot") {
+      statusText.textContent += " A fonte remota do CompareCloud estava indisponível e o snapshot local foi aplicado.";
     }
-    renderSheetCounts(data.sheet_counts);
-    downloadBtn.onclick = () => {
-      window.location.href = `/api/download/${data.scan_id}`;
-    };
     resultBox.classList.remove("hidden");
   } catch (error) {
     statusText.textContent = `Erro: ${error.message}`;
   } finally {
+    clearInterval(progressTimer);
     setRunning(form, false);
   }
 }

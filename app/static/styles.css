@@ -23,7 +23,7 @@ body {
   overflow-x: hidden;
 }
 
-h1, h2, h3, .provider-btn, .submit-btn, .download-btn {
+h1, h2, h3, .provider-btn, .submit-btn {
   font-family: "Space Grotesk", sans-serif;
 }
 
@@ -153,7 +153,7 @@ small {
   line-height: 1.35;
 }
 
-.submit-btn, .download-btn {
+.submit-btn {
   margin-top: 16px;
   border: 0;
   border-radius: 12px;
@@ -169,16 +169,11 @@ small {
   color: #fff;
 }
 
-.download-btn {
-  background: linear-gradient(130deg, #155eef 0%, #2e89ff 100%);
-  color: #fff;
-}
-
-.submit-btn:hover, .download-btn:hover {
+.submit-btn:hover {
   transform: translateY(-1px);
 }
 
-.submit-btn:disabled, .download-btn:disabled {
+.submit-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
@@ -203,6 +198,12 @@ small {
 
 .result-box p {
   margin: 0 0 8px;
+}
+
+.result-note {
+  margin-top: 12px;
+  color: #4a5f52;
+  font-size: 0.9rem;
 }
 
 .hidden {

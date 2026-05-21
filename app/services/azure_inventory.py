@@ -20,6 +20,28 @@ AZURE_SHEET_TO_COMPARECLOUD_AZURE_NAMES = {
 }
 
 
+def _trim_error_message(exc, limit=240):
+    msg = str(exc or "").replace("\n", " ").strip()
+    return msg[:limit]
+
+
+def _warn(warnings, service, subscription_id, operation, exc):
+    if warnings is None:
+        return
+    warnings.append(
+        {
+            "Provider": "azure",
+            "Service": service,
+            "Region": "global",
+            "SubscriptionId": subscription_id or "",
+            "Operation": operation,
+            "ErrorType": type(exc).__name__,
+            "ErrorMessage": _trim_error_message(exc),
+            "CapturedAt": dt_to_br_str(datetime.now(timezone.utc)),
+        }
+    )
+
+
 def make_credential(tenant_id, client_id, client_secret):
     if not tenant_id or not client_id or not client_secret:
         raise ValueError("Azure Tenant ID, Client ID, and Client Secret are required for runtime authentication.")
@@ -28,10 +50,11 @@ def make_credential(tenant_id, client_id, client_secret):
     return ClientSecretCredential(tenant_id=tenant_id, client_id=client_id, client_secret=client_secret)
 
 
-def _safe_iter(iterable_factory):
+def _safe_iter(iterable_factory, warnings=None, service="", subscription_id="", operation="list"):
     try:
         return list(iterable_factory())
-    except Exception:
+    except Exception as exc:
+        _warn(warnings, service, subscription_id, operation, exc)
         return []
 
 
@@ -60,6 +83,7 @@ def _collect_subscription_resources(credential, subscription):
     sql = SqlManagementClient(credential=credential, subscription_id=sub_id)
 
     results = {
+        "WARNINGS": [],
         "Azure_ResourceGroups": [],
         "Azure_Resources": [],
         "Azure_VirtualMachines": [],
@@ -74,8 +98,15 @@ def _collect_subscription_resources(credential, subscription):
         "Azure_SQLServers": [],
         "Azure_CosmosDB_Accounts": [],
     }
+    warnings = results["WARNINGS"]
 
-    for group in _safe_iter(lambda: resource.resource_groups.list()):
+    for group in _safe_iter(
+        lambda: resource.resource_groups.list(),
+        warnings=warnings,
+        service="resource",
+        subscription_id=sub_id,
+        operation="resource_groups.list",
+    ):
         results["Azure_ResourceGroups"].append({
             "SubscriptionId": sub_id,
             "Name": group.name,
@@ -83,7 +114,13 @@ def _collect_subscription_resources(credential, subscription):
             "ProvisioningState": getattr(group, "provisioning_state", None),
         })
 
-    for res in _safe_iter(lambda: resource.resources.list()):
+    for res in _safe_iter(
+        lambda: resource.resources.list(),
+        warnings=warnings,
+        service="resource",
+        subscription_id=sub_id,
+        operation="resources.list",
+    ):
         results["Azure_Resources"].append({
             "SubscriptionId": sub_id,
             "Name": res.name,
@@ -93,7 +130,13 @@ def _collect_subscription_resources(credential, subscription):
             "Id": res.id,
         })
 
-    for vm in _safe_iter(lambda: compute.virtual_machines.list_all()):
+    for vm in _safe_iter(
+        lambda: compute.virtual_machines.list_all(),
+        warnings=warnings,
+        service="compute",
+        subscription_id=sub_id,
+        operation="virtual_machines.list_all",
+    ):
         results["Azure_VirtualMachines"].append({
             "SubscriptionId": sub_id,
             "Name": vm.name,
@@ -106,7 +149,13 @@ def _collect_subscription_resources(credential, subscription):
             "Id": vm.id,
         })
 
-    for vnet in _safe_iter(lambda: network.virtual_networks.list_all()):
+    for vnet in _safe_iter(
+        lambda: network.virtual_networks.list_all(),
+        warnings=warnings,
+        service="network",
+        subscription_id=sub_id,
+        operation="virtual_networks.list_all",
+    ):
         addr_space = getattr(getattr(vnet, "address_space", None), "address_prefixes", None) or []
         results["Azure_VirtualNetworks"].append({
             "SubscriptionId": sub_id,
@@ -116,7 +165,13 @@ def _collect_subscription_resources(credential, subscription):
             "Id": vnet.id,
         })
 
-    for ip in _safe_iter(lambda: network.public_ip_addresses.list_all()):
+    for ip in _safe_iter(
+        lambda: network.public_ip_addresses.list_all(),
+        warnings=warnings,
+        service="network",
+        subscription_id=sub_id,
+        operation="public_ip_addresses.list_all",
+    ):
         results["Azure_PublicIPAddresses"].append({
             "SubscriptionId": sub_id,
             "Name": ip.name,
@@ -128,7 +183,13 @@ def _collect_subscription_resources(credential, subscription):
             "Id": ip.id,
         })
 
-    for account in _safe_iter(lambda: storage.storage_accounts.list()):
+    for account in _safe_iter(
+        lambda: storage.storage_accounts.list(),
+        warnings=warnings,
+        service="storage",
+        subscription_id=sub_id,
+        operation="storage_accounts.list",
+    ):
         results["Azure_StorageAccounts"].append({
             "SubscriptionId": sub_id,
             "Name": account.name,
@@ -138,7 +199,13 @@ def _collect_subscription_resources(credential, subscription):
             "Id": account.id,
         })
 
-    for app in _safe_iter(lambda: web.web_apps.list()):
+    for app in _safe_iter(
+        lambda: web.web_apps.list(),
+        warnings=warnings,
+        service="web",
+        subscription_id=sub_id,
+        operation="web_apps.list",
+    ):
         kind = (app.kind or "").lower()
         row = {
             "SubscriptionId": sub_id,
@@ -154,7 +221,13 @@ def _collect_subscription_resources(credential, subscription):
         else:
             results["Azure_WebApps"].append(row)
 
-    for cluster in _safe_iter(lambda: aks.managed_clusters.list()):
+    for cluster in _safe_iter(
+        lambda: aks.managed_clusters.list(),
+        warnings=warnings,
+        service="containerservice",
+        subscription_id=sub_id,
+        operation="managed_clusters.list",
+    ):
         agent_profiles = getattr(cluster, "agent_pool_profiles", None) or []
         desired_nodes = 0
         for profile in agent_profiles:
@@ -171,7 +244,13 @@ def _collect_subscription_resources(credential, subscription):
             "Id": cluster.id,
         })
 
-    for registry in _safe_iter(lambda: acr.registries.list()):
+    for registry in _safe_iter(
+        lambda: acr.registries.list(),
+        warnings=warnings,
+        service="containerregistry",
+        subscription_id=sub_id,
+        operation="registries.list",
+    ):
         results["Azure_ContainerRegistries"].append({
             "SubscriptionId": sub_id,
             "Name": registry.name,
@@ -181,7 +260,13 @@ def _collect_subscription_resources(credential, subscription):
             "Id": registry.id,
         })
 
-    for group in _safe_iter(lambda: aci.container_groups.list()):
+    for group in _safe_iter(
+        lambda: aci.container_groups.list(),
+        warnings=warnings,
+        service="containerinstance",
+        subscription_id=sub_id,
+        operation="container_groups.list",
+    ):
         containers = getattr(group, "containers", None) or []
         results["Azure_ContainerInstances"].append({
             "SubscriptionId": sub_id,
@@ -194,7 +279,13 @@ def _collect_subscription_resources(credential, subscription):
             "Id": group.id,
         })
 
-    for server in _safe_iter(lambda: sql.servers.list()):
+    for server in _safe_iter(
+        lambda: sql.servers.list(),
+        warnings=warnings,
+        service="sql",
+        subscription_id=sub_id,
+        operation="servers.list",
+    ):
         results["Azure_SQLServers"].append({
             "SubscriptionId": sub_id,
             "Name": server.name,
@@ -204,7 +295,13 @@ def _collect_subscription_resources(credential, subscription):
             "Id": server.id,
         })
 
-    for account in _safe_iter(lambda: cosmos.database_accounts.list()):
+    for account in _safe_iter(
+        lambda: cosmos.database_accounts.list(),
+        warnings=warnings,
+        service="cosmosdb",
+        subscription_id=sub_id,
+        operation="database_accounts.list",
+    ):
         regions = [loc.location_name for loc in (getattr(account, "locations", None) or [])]
         results["Azure_CosmosDB_Accounts"].append({
             "SubscriptionId": sub_id,
@@ -296,6 +393,7 @@ def collect_azure_inventory(
     }
 
     keys = [
+        "WARNINGS",
         "Azure_ResourceGroups",
         "Azure_Resources",
         "Azure_VirtualMachines",
@@ -312,5 +410,6 @@ def collect_azure_inventory(
     ]
     for key in keys:
         sheets[key] = _merge_results(result_bundles, key)
+    sheets["META"][0]["Warnings_Count"] = len(sheets.get("WARNINGS", []))
 
     return _apply_comparecloud_equivalents(sheets, mapper)

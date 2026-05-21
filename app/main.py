@@ -1,7 +1,7 @@
+import logging
 import re
-import uuid
-from datetime import datetime, timezone
 
+from botocore.exceptions import ClientError, EndpointConnectionError
 from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -12,17 +12,12 @@ from .services.azure_inventory import collect_azure_inventory
 from .services.comparecloud import CompareCloudMapper
 
 
-APP_TTL_SECONDS = 3600
-SCAN_CACHE = {}
+logger = logging.getLogger(__name__)
 mapper = CompareCloudMapper()
 
-app = FastAPI(title="SBA Cloud Compare", version="0.1.0")
+app = FastAPI(title="SBA Cloud Compare", version="0.2.0")
 templates = Jinja2Templates(directory="app/templates")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
-
-
-def _now_utc():
-    return datetime.now(timezone.utc)
 
 
 def _sanitize_file_stem(name, fallback):
@@ -33,26 +28,51 @@ def _sanitize_file_stem(name, fallback):
     return stem[:80].strip("._-") or fallback
 
 
-def _cleanup_cache():
-    cutoff = _now_utc().timestamp() - APP_TTL_SECONDS
-    stale_keys = [key for key, value in SCAN_CACHE.items() if value["created_at"] < cutoff]
-    for key in stale_keys:
-        SCAN_CACHE.pop(key, None)
+def _mapping_data_source_label():
+    if mapper.current_data_source == mapper.data_url:
+        return "remote"
+    return "snapshot"
 
 
-def _store_report(provider, project_name, sheets, workbook_bytes):
-    _cleanup_cache()
-    scan_id = str(uuid.uuid4())
+def _public_error_message(provider, exc):
+    if isinstance(exc, ValueError):
+        return str(exc)
+
+    if provider == "aws":
+        if isinstance(exc, ClientError):
+            return "Falha de autenticação ou permissão na AWS. Verifique Access Key, Secret Key e permissões IAM."
+        if isinstance(exc, EndpointConnectionError):
+            return "Falha de conectividade com endpoints da AWS. Verifique rede, egress e DNS."
+        return "Falha ao executar a leitura AWS. Verifique conectividade e permissões da conta."
+
+    exc_name = type(exc).__name__
+    if exc_name in {"ClientAuthenticationError", "CredentialUnavailableError"}:
+        return "Falha de autenticação no Azure. Verifique Tenant ID, Client ID, Client Secret e permissões da service principal."
+    return "Falha ao executar a leitura Azure. Verifique conectividade e permissões da assinatura."
+
+
+def _build_excel_response(provider, project_name, sheets, workbook_bytes):
     filename = f"{_sanitize_file_stem(project_name, f'{provider}_inventory')}.xlsx"
-    sheet_counts = {sheet: len(rows) if isinstance(rows, list) else 0 for sheet, rows in sheets.items()}
-    SCAN_CACHE[scan_id] = {
-        "provider": provider,
-        "filename": filename,
-        "bytes": workbook_bytes,
-        "sheets": sheet_counts,
-        "created_at": _now_utc().timestamp(),
+    warnings_count = len(sheets.get("WARNINGS", [])) if isinstance(sheets.get("WARNINGS"), list) else 0
+    sheet_count = len([name for name, rows in (sheets or {}).items() if isinstance(rows, list)])
+    total_rows = sum(len(rows) for rows in (sheets or {}).values() if isinstance(rows, list))
+
+    headers = {
+        "Content-Disposition": f'attachment; filename="{filename}"',
+        "Cache-Control": "no-store",
+        "Pragma": "no-cache",
+        "X-SBA-Provider": provider,
+        "X-SBA-Warnings-Count": str(warnings_count),
+        "X-SBA-Sheet-Count": str(sheet_count),
+        "X-SBA-Total-Rows": str(total_rows),
+        "X-SBA-Mapping-Source": mapper.source_url,
+        "X-SBA-Mapping-Data-Source": _mapping_data_source_label(),
     }
-    return scan_id, filename, sheet_counts
+    return Response(
+        content=workbook_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers=headers,
+    )
 
 
 @app.get("/healthz")
@@ -83,7 +103,7 @@ def scan_aws(
     threads: int = Form(8),
 ):
     if not access_key_id.strip() or not secret_access_key.strip():
-        raise HTTPException(status_code=400, detail="AWS Access Key ID and Secret Access Key are required.")
+        raise HTTPException(status_code=400, detail="AWS Access Key ID e Secret Access Key são obrigatórios.")
 
     try:
         sheets = collect_aws_inventory(
@@ -96,26 +116,17 @@ def scan_aws(
             mapper=mapper,
         )
         workbook_bytes = sheets_to_workbook_bytes(sheets)
-        scan_id, filename, sheet_counts = _store_report(
+        return _build_excel_response(
             provider="aws",
             project_name=project_name or "aws_inventory",
             sheets=sheets,
             workbook_bytes=workbook_bytes,
         )
-        return {
-            "scan_id": scan_id,
-            "provider": "aws",
-            "filename": filename,
-            "sheet_counts": sheet_counts,
-            "mapping_source": mapper.source_url,
-            "mapping_data_url": mapper.data_url,
-            "mapping_data_source": mapper.current_data_source,
-            "mapping_last_error": mapper.last_error,
-        }
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"AWS scan failed: {type(exc).__name__}: {exc}") from exc
+        logger.warning("Falha na leitura AWS: %s", type(exc).__name__)
+        raise HTTPException(status_code=400, detail=_public_error_message("aws", exc)) from exc
 
 
 @app.post("/api/scan/azure")
@@ -128,7 +139,7 @@ def scan_azure(
     threads: int = Form(4),
 ):
     if not tenant_id.strip() or not client_id.strip() or not client_secret.strip():
-        raise HTTPException(status_code=400, detail="Azure Tenant ID, Client ID, and Client Secret are required.")
+        raise HTTPException(status_code=400, detail="Azure Tenant ID, Client ID e Client Secret são obrigatórios.")
 
     try:
         sheets = collect_azure_inventory(
@@ -140,42 +151,17 @@ def scan_azure(
             mapper=mapper,
         )
         workbook_bytes = sheets_to_workbook_bytes(sheets)
-        scan_id, filename, sheet_counts = _store_report(
+        return _build_excel_response(
             provider="azure",
             project_name=project_name or "azure_inventory",
             sheets=sheets,
             workbook_bytes=workbook_bytes,
         )
-        return {
-            "scan_id": scan_id,
-            "provider": "azure",
-            "filename": filename,
-            "sheet_counts": sheet_counts,
-            "mapping_source": mapper.source_url,
-            "mapping_data_url": mapper.data_url,
-            "mapping_data_source": mapper.current_data_source,
-            "mapping_last_error": mapper.last_error,
-        }
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"Azure scan failed: {type(exc).__name__}: {exc}") from exc
-
-
-@app.get("/api/download/{scan_id}")
-def download_report(scan_id: str):
-    payload = SCAN_CACHE.get(scan_id)
-    if not payload:
-        raise HTTPException(status_code=404, detail="Report not found or expired.")
-    headers = {
-        "Content-Disposition": f"attachment; filename={payload['filename']}",
-        "Cache-Control": "no-store",
-    }
-    return Response(
-        content=payload["bytes"],
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers=headers,
-    )
+        logger.warning("Falha na leitura Azure: %s", type(exc).__name__)
+        raise HTTPException(status_code=400, detail=_public_error_message("azure", exc)) from exc
 
 
 @app.exception_handler(HTTPException)
