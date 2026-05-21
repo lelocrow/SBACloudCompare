@@ -1,6 +1,6 @@
 # SBACloudCompare
 
-Aplicação web para inventário de recursos em cloud e comparação de serviços entre provedores, com foco inicial em AWS e Azure.
+O SBACloudCompare ajuda Arquitetos de Soluções de Negócios a mapear, comparar e documentar recursos de clientes em diferentes provedores de nuvem, gerando relatórios estruturados em Excel para apoiar assessments, modernização e planejamento de migração.
 
 ## Visão geral
 
