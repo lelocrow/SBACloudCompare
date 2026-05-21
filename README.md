@@ -128,22 +128,37 @@ gcloud services enable artifactregistry.googleapis.com
 ### 4) Crie repositório no Artifact Registry (uma vez)
 
 ```bash
+# Linux/macOS
 gcloud artifacts repositories create $REPO_NAME \
   --repository-format=docker \
   --location=$REGION \
+  --description="Imagens Docker para SBACloudCompare"
+```
+```powershell
+# Windows PowerShell
+gcloud artifacts repositories create $env:REPO_NAME `
+  --repository-format=docker `
+  --location=$env:REGION `
   --description="Imagens Docker para SBACloudCompare"
 ```
 
 ### 5) Build da imagem
 
 ```bash
+# Linux/macOS
 gcloud builds submit \
   --tag $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/$SERVICE_NAME:latest
+```
+```powershell
+# Windows PowerShell
+gcloud builds submit `
+  --tag "$env:REGION-docker.pkg.dev/$env:PROJECT_ID/$env:REPO_NAME/$env:SERVICE_NAME`:latest"
 ```
 
 ### 6) Deploy no Cloud Run
 
 ```bash
+# Linux/macOS
 gcloud run deploy $SERVICE_NAME \
   --image $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/$SERVICE_NAME:latest \
   --region $REGION \
@@ -157,12 +172,32 @@ gcloud run deploy $SERVICE_NAME \
   --max-instances 1 \
   --min-instances 0
 ```
+```powershell
+# Windows PowerShell
+gcloud run deploy $env:SERVICE_NAME `
+  --image "$env:REGION-docker.pkg.dev/$env:PROJECT_ID/$env:REPO_NAME/$env:SERVICE_NAME`:latest" `
+  --region $env:REGION `
+  --platform managed `
+  --allow-unauthenticated `
+  --port 8080 `
+  --timeout 3600 `
+  --cpu 2 `
+  --memory 2Gi `
+  --concurrency 1 `
+  --max-instances 1 `
+  --min-instances 0
+```
 
 ### 7) Validar deploy
 
 1. Obtenha URL do serviço.
 ```bash
+# Linux/macOS
 gcloud run services describe $SERVICE_NAME --region $REGION --format='value(status.url)'
+```
+```powershell
+# Windows PowerShell
+gcloud run services describe $env:SERVICE_NAME --region $env:REGION --format='value(status.url)'
 ```
 
 2. Teste o healthcheck.
@@ -192,15 +227,28 @@ Se sua organização usa regras restritivas de egress, valide firewall/NAT/VPC c
 
 1. Gere uma nova imagem.
 ```bash
+# Linux/macOS
 gcloud builds submit \
   --tag $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/$SERVICE_NAME:v2
+```
+```powershell
+# Windows PowerShell
+gcloud builds submit `
+  --tag "$env:REGION-docker.pkg.dev/$env:PROJECT_ID/$env:REPO_NAME/$env:SERVICE_NAME`:v2"
 ```
 
 2. Publique a nova imagem.
 ```bash
+# Linux/macOS
 gcloud run deploy $SERVICE_NAME \
   --image $REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/$SERVICE_NAME:v2 \
   --region $REGION
+```
+```powershell
+# Windows PowerShell
+gcloud run deploy $env:SERVICE_NAME `
+  --image "$env:REGION-docker.pkg.dev/$env:PROJECT_ID/$env:REPO_NAME/$env:SERVICE_NAME`:v2" `
+  --region $env:REGION
 ```
 
 ## Troubleshooting rápido
