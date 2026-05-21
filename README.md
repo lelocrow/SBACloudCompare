@@ -146,6 +146,8 @@ gcloud artifacts repositories create $env:REPO_NAME `
 
 ### 5) Build da imagem
 
+Execute o comando na raiz do projeto (mesma pasta do `Dockerfile`) e nÃ£o remova o `.` final, que indica o diretÃ³rio de origem do build.
+
 ```bash
 # Linux/macOS
 gcloud builds submit \
@@ -157,6 +159,11 @@ gcloud builds submit \
 gcloud builds submit `
   --tag "$env:REGION-docker.pkg.dev/$env:PROJECT_ID/$env:REPO_NAME/$env:SERVICE_NAME`:latest" `
   .
+```
+
+```powershell
+# Windows PowerShell (linha Ãºnica equivalente)
+gcloud builds submit --tag "$env:REGION-docker.pkg.dev/$env:PROJECT_ID/$env:REPO_NAME/$env:SERVICE_NAME`:latest" .
 ```
 
 ### 5.1) Teste local do container (opcional, recomendado)
@@ -258,6 +265,10 @@ gcloud builds submit \
 gcloud builds submit `
   --tag "$env:REGION-docker.pkg.dev/$env:PROJECT_ID/$env:REPO_NAME/$env:SERVICE_NAME`:v2" `
   .
+```
+```powershell
+# Windows PowerShell (linha Ãºnica equivalente)
+gcloud builds submit --tag "$env:REGION-docker.pkg.dev/$env:PROJECT_ID/$env:REPO_NAME/$env:SERVICE_NAME`:v2" .
 ```
 
 2. Publique a nova imagem.
