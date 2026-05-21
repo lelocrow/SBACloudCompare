@@ -109,7 +109,12 @@ $env:REPO_NAME="cloud-run-images"
 
 4. Selecione o projeto no `gcloud`.
 ```bash
+# Linux/macOS
 gcloud config set project $PROJECT_ID
+```
+```powershell
+# Windows PowerShell
+gcloud config set project $env:PROJECT_ID
 ```
 
 ### 3) Habilite APIs necessárias
