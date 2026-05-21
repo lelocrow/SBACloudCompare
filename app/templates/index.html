@@ -7,6 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@400,1&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
@@ -26,8 +27,14 @@
 
     <section class="panel">
       <div class="provider-switch" role="tablist" aria-label="Escolha de provedor">
-        <button id="tab-aws" class="provider-btn active" data-provider="aws" type="button">AWS</button>
-        <button id="tab-azure" class="provider-btn" data-provider="azure" type="button">Azure</button>
+        <button id="tab-aws" class="provider-btn active" data-provider="aws" type="button">
+          <img class="provider-logo" src="/static/assets/aws.svg" alt="" aria-hidden="true">
+          <span>AWS</span>
+        </button>
+        <button id="tab-azure" class="provider-btn" data-provider="azure" type="button">
+          <img class="provider-logo" src="/static/assets/azure.svg" alt="" aria-hidden="true">
+          <span>Azure</span>
+        </button>
       </div>
 
       <form id="form-aws" class="scan-form active" autocomplete="off">
@@ -53,7 +60,10 @@
             <small>Preencha se estiver usando credenciais temporárias STS.</small>
           </label>
         </div>
-        <button class="submit-btn" type="submit">Executar leitura AWS</button>
+        <button class="submit-btn" type="submit">
+          <span class="material-symbols-outlined btn-icon" aria-hidden="true">bolt</span>
+          Executar leitura AWS
+        </button>
       </form>
 
       <form id="form-azure" class="scan-form" autocomplete="off">
@@ -84,7 +94,10 @@
             <small>Se vazio, varre todas as subscriptions visíveis.</small>
           </label>
         </div>
-        <button class="submit-btn" type="submit">Executar leitura Azure</button>
+        <button class="submit-btn" type="submit">
+          <span class="material-symbols-outlined btn-icon" aria-hidden="true">bolt</span>
+          Executar leitura Azure
+        </button>
       </form>
     </section>
 
