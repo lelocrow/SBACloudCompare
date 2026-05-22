@@ -61,11 +61,59 @@ function triggerDownload(blob, filename) {
 }
 
 async function parseErrorResponse(response) {
+  const fallback = "Falha na execução.";
+
+  function formatErrorDetail(detail) {
+    if (typeof detail === "string") {
+      return detail;
+    }
+
+    if (Array.isArray(detail)) {
+      const messages = detail
+        .map((item) => {
+          if (typeof item === "string") {
+            return item;
+          }
+          if (item && typeof item === "object") {
+            const loc = Array.isArray(item.loc) ? item.loc.join(".") : "";
+            const msg = item.msg || item.message || "";
+            if (loc && msg) {
+              return `${loc}: ${msg}`;
+            }
+            if (msg) {
+              return msg;
+            }
+            return JSON.stringify(item);
+          }
+          return String(item);
+        })
+        .filter(Boolean);
+      return messages.length ? messages.join(" | ") : fallback;
+    }
+
+    if (detail && typeof detail === "object") {
+      if (typeof detail.message === "string") {
+        return detail.message;
+      }
+      if (detail.detail) {
+        return formatErrorDetail(detail.detail);
+      }
+      return JSON.stringify(detail);
+    }
+
+    return fallback;
+  }
+
   try {
-    const data = await response.json();
-    return data?.detail || "Falha na execução.";
+    const data = await response.clone().json();
+    return formatErrorDetail(data?.detail ?? data);
   } catch {
-    return "Falha na execução.";
+    try {
+      const text = (await response.text()).trim();
+      return text || fallback;
+    } catch {
+      return fallback;
+    }
   }
 }
 
