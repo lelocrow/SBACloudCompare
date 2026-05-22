@@ -114,6 +114,7 @@ async function parseErrorResponse(response) {
 
 async function runScan(provider, form) {
   resultBox.classList.add("hidden");
+  const formData = new FormData(form);
   setRunning(form, true);
 
   const startedAt = Date.now();
@@ -125,7 +126,7 @@ async function runScan(provider, form) {
   try {
     const response = await fetch(`/api/scan/${provider}`, {
       method: "POST",
-      body: new FormData(form),
+      body: formData,
     });
 
     if (!response.ok) {
